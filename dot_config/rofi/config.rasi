@@ -1,0 +1,39 @@
+@theme "catppuccin-default"
+
+configuration {
+}
+
+/* Drop in here, because last rule wins :) */
+
+listview {
+    columns: 4;
+    lines: 3;
+    spacing: 14px;
+    padding: 20px;
+    fixed-height: true;
+    scrollbar: false;
+}
+
+element {
+    orientation: vertical;
+    padding: 12px;
+    spacing: 6px;
+    border-radius: 10px;
+}
+
+element-icon {
+    size: 36px;
+    horizontal-align: 0.5;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "Sans Medium 11";
+}
+
+window {
+    width: 520px;
+    border-radius: 14px;
+}
+
