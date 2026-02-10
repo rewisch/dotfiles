@@ -1,0 +1,124 @@
+/* -------------------------------------------------
+   Catppuccin Mocha
+------------------------------------------------- */
+
+@import "./mocha.css";
+
+
+/* -------------------------------------------------
+   Global
+------------------------------------------------- */
+
+* {
+  background: transparent;
+  color: @text;
+
+  border: none;
+  border-radius: 0;
+
+  min-height: 0;
+
+  font-family: "FiraCode Nerd Font";
+  font-size: 12px;
+}
+
+
+/* -------------------------------------------------
+   Bar Padding
+------------------------------------------------- */
+
+.modules-left {
+  margin-left: 8px;
+}
+
+.modules-right {
+  margin-right: 8px;
+}
+
+
+/* -------------------------------------------------
+   Workspaces
+------------------------------------------------- */
+
+#workspaces button {
+  all: initial;
+
+  padding: 0 6px;
+  margin: 0 2px;
+
+  min-width: 10px;
+
+  color: @text;
+}
+
+#workspaces button.empty {
+  opacity: 0.4;
+}
+
+#workspaces button.active {
+  color: @mauve;
+}
+
+
+/* -------------------------------------------------
+   Module Spacing
+------------------------------------------------- */
+
+#tray {
+  margin-right: 12px;
+}
+
+#cpu,
+#battery,
+#pulseaudio {
+  margin-right: 14px;
+}
+
+#bluetooth {
+  margin-right: 14px;
+}
+
+#network {
+  margin-right: 12px;
+}
+
+
+/* -------------------------------------------------
+   Clock
+------------------------------------------------- */
+
+#clock {
+  margin-left: 6px;
+  color: @lavender;
+}
+
+
+/* -------------------------------------------------
+   Tooltip
+------------------------------------------------- */
+
+tooltip {
+  background: @base;
+  color: @text;
+
+  border-radius: 6px;
+  padding: 6px;
+}
+
+
+/* -------------------------------------------------
+   Power Button
+------------------------------------------------- */
+
+#custom-power {
+  margin-left: 8px;
+  padding: 0 9px;
+
+  color: @red;
+  font-size: 13px;
+}
+
+#custom-power:hover {
+  opacity: 0.7;
+}
+
