@@ -1,0 +1,7 @@
+{{ if eq .chezmoi.osRelease.id "arch" }}
+
+set completion-ignore-case on
+
+{{ else if eq .chezmoi.osRelease.id "ubuntu" }}
+
+{{ end }}
