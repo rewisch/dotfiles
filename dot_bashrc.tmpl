@@ -1,6 +1,4 @@
-#
-# ~/.bashrc
-#
+{{ if eq .chezmoi.osRelease.id "arch" }}
 # If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
@@ -18,3 +16,7 @@ export DESKTOP_SESSION=hyprland
 alias vi='vim'
 alias ls='eza -l'
 alias grep='grep --color=auto'
+
+{{ else if eq .chezmoi.osRelease.id "ubuntu" }}
+
+{{ end }}
