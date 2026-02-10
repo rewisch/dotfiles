@@ -1,0 +1,20 @@
+#
+# ~/.bashrc
+#
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
+
+export EDITOR=nvim
+
+#Add more to path
+PATH=~/.local/bin:$PATH
+
+
+eval "$(oh-my-posh --config '~/.config/oh-my-posh/catppuccin_mocha.omp.json' init bash)"
+
+
+
+export DESKTOP_SESSION=hyprland
+alias vi='vim'
+alias ls='eza -l'
+alias grep='grep --color=auto'
