@@ -1,0 +1,37 @@
+#!/bin/sh
+
+{{- if ne .chezmoi.os "linux" }}
+  exit 0
+{{- end }}
+
+set -eu
+
+# Your fingerprints
+KEYS="
+77427F4E03CBAAD060BF65AEDFBC8492466DFEE3
+B670546BF8A30B315B6958A12D930174D8862D89
+"
+
+SRC="{{ .chezmoi.sourceDir }}/tmp-gpg-export"
+
+have_key() {
+  gpg --list-secret-keys "$1" >/dev/null 2>&1
+}
+
+need=false
+
+for k in $KEYS; do
+  if ! have_key "$k"; then
+    need=true
+    break
+  fi
+done
+
+# Nothing to do
+[ "$need" = false ] && exit 0
+
+mkdir -p "$HOME/.gnupg"
+chmod 700 "$HOME/.gnupg"
+
+# Import keys (streaming, no temp files)
+chezmoi decrypt "$SRC/encrypted_private.asc.age" | gpg --import
