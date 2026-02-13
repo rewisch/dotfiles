@@ -1,120 +1,75 @@
 {
-  "reload_style_on_change": true,
-
   "layer": "top",
-  "position": "top",
-  "height": 20,
-  "spacing": 0,
+    "modules-left": ["custom/launcher","cpu","memory","tray"],
+    "modules-center": ["clock"],
+    "modules-right": ["custom/updates","pulseaudio","network","bluetooth","custom/power"],
 
-  "modules-left": [
-    "hyprland/workspaces"
-  ],
+    "pulseaudio": {
+      "format": "{icon}",
+      "format-muted": " ",
 
-  "modules-center": [
-    "clock"
-  ],
+      "format-icons": {
+        "headphone": " ",
+        "default": [" ", " ", " "]
+      },
 
-  "modules-right": [
-    "tray",
-    "bluetooth",
-    "network",
-    "pulseaudio",
-    "cpu",
-    "battery",
-    "custom/power"
-  ],
+      "scroll-step": 5,
 
-  /* ---------------- Workspaces ---------------- */
-
-  "hyprland/workspaces": {
-    "on-click": "activate",
-    "format": "{icon}",
-
-    "format-icons": {
-      "default": "",
-      "1": "1",
-      "2": "2",
-      "3": "3",
-      "4": "4",
-      "5": "5",
-      "6": "6",
-      "7": "7",
-      "8": "8",
-      "9": "9",
-      "10": "0",
-      "active": "󱓻"
+      "tooltip-format": "Volume {volume}%",
+      "on-click": "kitty -e wiremix",
+      "on-click-right": "pamixer -t"
     },
 
-    "persistent-workspaces": {
-      "1": [],
-      "2": [],
-      "3": [],
-      "4": [],
-      "5": [],
-      "6": [],
-      "7": []
+    "network": {
+      "format-wifi": "  {essid}",
+      "format-ethernet": "{ifname}  ",
+      "format-disconnected": "",
+      "tooltip-format": "{ipaddr}",
+      "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
+      "tooltip-format-ethernet": "<span>{ipaddr}</span>\n<span>{cidr}</span>",
+      "tooltip-format-disconnected": "Disconnected",
+    },
+    "bluetooth": {
+      "format": "  ",
+      "format-disabled": " 󰂲 ",
+      "format-off": " 󰂲 ",
+      "format-connected": " 󰂱 ",
+      "format-no-controller": "",
+      "tooltip-format": "Devices: {num_connections}",
+      "on-click": "kitty -e bluetui"
+    },
+    "clock": {
+      "format": "{:L%A %H:%M}",
+      "format-alt": "{:L%d %B W%V %Y}",
+      "tooltip": false
+    },
+    "cpu": {
+      "interval": 15,
+      "format": "   {}%",
+      "max-length": 15,
+      "on-click": "kitty -e btop"
+    },
+    "memory": {
+      "interval": 30,
+      "format": "   {}%",
+      "max-length": 10,
+      "on-click": "kitty -e btop"
+    },
+    "custom/launcher":{
+      "format": " ",
+      "on-click": "rofi -show drun",
+      "on-click-right": "killall rofi"
+    },
+    "custom/power": {
+      "format": " ",
+      "tooltip": "Power",
+      "on-click": "~/.local/bin/powermenu.sh"
+    },
+    "custom/updates":{
+      "format": "{} Update(s)",
+      "exec": "checkupdates | wc -l",
+      "exec-if": "[[ $(checkupdates | wc -l) != 0 ]]",
+      "interval": 60,
+      "on-click": "kitty bash -c \"read -e -i 'sudo pacman -Syu' _; sudo pacman -Syu; exec bash\""
     }
-  },
-
-  /* ---------------- Clock ---------------- */
-
-  "clock": {
-    "format": "{:L%A %H:%M}",
-    "format-alt": "{:L%d %B W%V %Y}",
-    "tooltip": false
-  },
-
-  /* ---------------- CPU ---------------- */
-
-  "cpu": {
-    "interval": 5,
-    "format": "󰍛",
-    "on-click": "kitty -e btop"
-  },
-
-  /* ---------------- Bluetooth ---------------- */
-
-  "bluetooth": {
-    "format": "",
-    "format-disabled": "󰂲",
-    "format-off": "󰂲",
-    "format-connected": "󰂱",
-    "format-no-controller": "",
-    "tooltip-format": "Devices: {num_connections}",
-    "on-click": "kitty -e bluetui"
-  },
-
-  /* ---------------- Audio ---------------- */
-
-  "pulseaudio": {
-    "format": "{icon}",
-    "format-muted": "",
-
-    "format-icons": {
-      "headphone": "",
-      "default": ["", "", ""]
-    },
-
-    "scroll-step": 5,
-
-    "tooltip-format": "Volume {volume}%",
-    "on-click": "kitty -e wiremix",
-    "on-click-right": "pamixer -t"
-  },
-
-  /* ---------------- System Tray ---------------- */
-
-  "tray": {
-    "icon-size": 12,
-    "spacing": 10
-  },
-
-  /* ---------------- Power Menu ---------------- */
-
-  "custom/power": {
-    "format": "",
-    "tooltip": "Power",
-    "on-click": "~/.local/bin/powermenu.sh"
-  }
 }
-
