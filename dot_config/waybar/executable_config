@@ -26,7 +26,7 @@
       "format-disconnected": "",
       "tooltip-format": "{ipaddr}",
       "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
-      "tooltip-format-ethernet": "<span>{ipaddr}</span>\n<span>{cidr}</span>",
+      "tooltip-format-ethernet": "<span>{ipaddr}</span>\n<span>{netmask}/{cidr}</span>",
       "tooltip-format-disconnected": "Disconnected",
     },
     "bluetooth": {
@@ -57,7 +57,7 @@
     },
     "custom/launcher":{
       "format": " ",
-      "on-click": "rofi -show drun",
+      "on-click": "rofi -show drun -show-icons",
       "on-click-right": "killall rofi"
     },
     "custom/power": {

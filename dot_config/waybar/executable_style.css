@@ -2,10 +2,12 @@
 
 * {
 	border: none;
-	border-radius: 10;
+	border-radius: 10px;
     font-family: "JetbrainsMono Nerd Font" ;
 	font-size: 12px;
-	min-height: 10px;
+	min-height: 0px;
+	padding-top: 2px;
+	padding-bottom: 2px;
 }
 
 window#waybar {
@@ -17,21 +19,21 @@ window#waybar.hidden {
 }
 
 #window {
-	margin-top: 6px;
-	padding-left: 10px;
-	padding-right: 10px;
+	margin-top: 0px;
+	padding-left: 8px;
+	padding-right: 8px;
 	border-radius: 10px;
 	transition: none;
     color: transparent;
 	background: transparent;
 }
 #tags {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 12px;
 	font-size: 4px;
 	margin-bottom: 0px;
 	border-radius: 10px;
-	background: @crust;
+	background: transparent;
 	transition: none;
 }
 
@@ -70,67 +72,67 @@ window#waybar.hidden {
 }
 
 #network {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @sky;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #bluetooth {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @sapphire;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #pulseaudio {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @yellow;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #battery {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @teal;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #battery.charging, #battery.plugged {
 	color: @teal;
     background-color: @surface0;
-	border: 1px solid @surface2;
+	border: none;
 }
 
 #battery.critical:not(.charging) {
     background-color: @surface0;
     color: @red;
-	border: 1px solid @red;
+	border: none;
     animation-name: blink;
     animation-duration: 0.5s;
     animation-timing-function: linear;
@@ -146,132 +148,132 @@ window#waybar.hidden {
 }
 
 #backlight {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @peach;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 #clock {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
-	color: @green;
-	background: @surface0;
-	border: 1px solid @surface2;
+	color: @subtext1;
+	background: transparent;
+	border: none;
 	/*background: #1A1826;*/
 }
 
 #memory {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
+	padding-left: 8px;
 	margin-bottom: 0px;
-	padding-right: 10px;
+	padding-right: 8px;
 	border-radius: 10px;
 	transition: none;
 	color: @lavender;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 #cpu {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
+	padding-left: 8px;
 	margin-bottom: 0px;
-	padding-right: 10px;
+	padding-right: 8px;
 	border-radius: 10px;
 	transition: none;
 	color: @blue;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #tray {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
+	padding-left: 8px;
 	margin-bottom: 0px;
-	padding-right: 10px;
+	padding-right: 8px;
 	border-radius: 10px;
 	transition: none;
 	color: @teal;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #custom-launcher {
-	font-size: 24px;
-	margin-top: 6px;
+	font-size: 18px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
+	padding-left: 8px;
 	padding-right: 5px;
 	border-radius: 10px;
 	transition: none;
     color: @sky;
-    background: @surface0;
-	border: 1px solid @surface2;
+    background: transparent;
+	border: none;
 }
 
 #custom-power {
-	font-size: 20px;
-	margin-top: 6px;
+	font-size: 16px;
+	margin-top: 0px;
 	margin-left: 8px;
 	margin-right: 8px;
-	padding-left: 10px;
+	padding-left: 8px;
 	padding-right: 5px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @red;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #custom-wallpaper {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @lavender;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #custom-updates {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @maroon;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
 
 #custom-media {
-	margin-top: 6px;
+	margin-top: 0px;
 	margin-left: 8px;
-	padding-left: 10px;
-	padding-right: 10px;
+	padding-left: 8px;
+	padding-right: 8px;
 	margin-bottom: 0px;
 	border-radius: 10px;
 	transition: none;
 	color: @flamingo;
-	background: @surface0;
-	border: 1px solid @surface2;
+	background: transparent;
+	border: none;
 }
