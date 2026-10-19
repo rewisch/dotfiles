@@ -35,3 +35,4 @@ chmod 700 "$HOME/.gnupg"
 
 # Import keys (streaming, no temp files)
 chezmoi decrypt "$SRC/encrypted_private.asc.age" | gpg --import
+chezmoi decrypt "$SRC/encrypted_ownertrust.txt.age" | gpg --import-ownertrust
