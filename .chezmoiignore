@@ -1,3 +1,33 @@
 key.txt.age
 README.md
 tmp-gpg-export/
+
+{{- if stat "/usr/share/omarchy" }}
+# Omarchy manages these itself
+.bashrc
+.bash_profile
+.bash_logout
+.config/btop
+.config/btop/**
+.config/git
+.config/git/**
+.config/hypr
+.config/hypr/**
+.config/kitty
+.config/kitty/**
+.config/lazygit
+.config/lazygit/**
+.config/nvim
+.config/nvim/**
+.config/oh-my-posh
+.config/oh-my-posh/**
+.config/rofi
+.config/rofi/**
+.config/waybar
+.config/waybar/**
+.config/yazi
+.config/yazi/**
+.local/bin/powermenu.sh
+.ssh
+.ssh/**
+{{- end }}
