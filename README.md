@@ -45,6 +45,7 @@ cd ~/.local/share/chezmoi && git add -A && git commit -m "..." && git push
 |---|---|
 | `~/.secrets/nas.smbcred` | SMB-Login für `//nas.home.arpa/Cloud-Reto` (fstab-Mount `/mnt/nas/Cloud-Reto`) |
 | `~/.secrets/anthropic-audible.key` | Claude-API-Key für `~/src/audible` (`ANTHROPIC_API_KEY_AUDIBLE`) |
+| `~/.secrets/kex-vnc` | VNC-Passwort für Kali NetHunter KeX auf dem Galaxy S10 (Viewer-Datei: `vncpasswd -f < ~/.secrets/kex-vnc > ~/.secrets/kex-vnc.passwd`) |
 | `~/.audible/*` | audible-cli Profile `reto` und `livia` |
 | `~/.ssh/*` | alter SSH-Key, auf Omarchy ausgeschlossen (siehe unten) |
 | `tmp-gpg-export/` | GPG-Keys + Ownertrust, nur für das Import-Skript |
