@@ -1,0 +1,5 @@
+#!/bin/sh
+# Launcher for Creality Print (AUR creality-print-bin) that hides variable fonts
+# from the app; see ~/.config/creality-print/fonts-novar.conf for why.
+export FONTCONFIG_FILE="$HOME/.config/creality-print/fonts-novar.conf"
+exec /usr/bin/CrealityPrint "$@"

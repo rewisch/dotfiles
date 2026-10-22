@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Creality Print
+Exec=creality-print %F
+Icon=CrealityPrint
+Type=Application
+Categories=Utility;
+MimeType=model/stl;application/vnd.ms-3mfdocument;application/prs.wavefront-obj;application/x-amf;
