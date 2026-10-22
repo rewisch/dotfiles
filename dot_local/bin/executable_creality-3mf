@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Build a Creality Print / OrcaSlicer project 3MF from STL files and presets.
+
+Creality Print's CLI can slice but no longer exports 3MF, so this writes the
+project file directly: geometry in 3D/3dmodel.model plus the presets, resolved
+by a CLI test slice, in Metadata/project_settings.config.
+
+usage: creality-3mf -o out.3mf [-p "Creality K1C 0.4 nozzle"]
+                    [-s "0.20mm Standard @Creality K1C 0.4 nozzle"]
+                    [-f "Generic PLA @Creality K1C 0.4 nozzle"] model.stl [...]
+Preset names are the JSON basenames under
+/opt/creality-print/resources/profiles/Creality/{machine,process,filament}.
+"""
+import argparse, json, os, struct, sys, zipfile
+from xml.sax.saxutils import escape
+
+PROFILES = "/opt/creality-print/resources/profiles/Creality"
+META = {"type", "name", "inherits", "from", "instantiation", "setting_id",
+        "filament_id", "printer_model", "printer_variant", "is_custom_defined",
+        "version", "upward_compatible_machine", "default_materials", "family",
+        "model_id", "description", "renamed_from", "alias", "compatible_printers",
+        "compatible_printers_condition", "compatible_prints",
+        "compatible_prints_condition"}
+
+def resolve(kind, name):
+    d = os.path.join(PROFILES, kind); merged = {}; chain = []
+    while name:
+        p = os.path.join(d, name + ".json")
+        if not os.path.exists(p): sys.exit(f"preset not found: {p}")
+        j = json.load(open(p)); chain.append(j)
+        name = j.get("inherits")
+    for j in reversed(chain):
+        merged.update(j)
+    return {k: v for k, v in merged.items() if k not in META}
+
+def read_stl(path):
+    data = open(path, "rb").read()
+    tris = []
+    if data[:5].lower() != b"solid" or len(data) >= 84 and len(data) == 84 + 50 * struct.unpack("<I", data[80:84])[0]:
+        n = struct.unpack("<I", data[80:84])[0]
+        for i in range(n):
+            o = 84 + 50 * i
+            v = struct.unpack("<12f", data[o:o + 48])
+            tris.append((v[3:6], v[6:9], v[9:12]))
+    else:
+        cur = []
+        for line in data.decode("ascii", "replace").splitlines():
+            t = line.split()
+            if t[:1] == ["vertex"]:
+                cur.append(tuple(float(x) for x in t[1:4]))
+                if len(cur) == 3: tris.append(tuple(cur)); cur = []
+    return tris
+
+def model_xml(meshes):
+    objs = []; items = []
+    for oid, (name, tris) in enumerate(meshes, start=1):
+        verts = {}; order = []; faces = []
+        for tri in tris:
+            idx = []
+            for v in tri:
+                if v not in verts: verts[v] = len(order); order.append(v)
+                idx.append(verts[v])
+            faces.append(idx)
+        vs = "".join(f'<vertex x="{v[0]:.6f}" y="{v[1]:.6f}" z="{v[2]:.6f}"/>' for v in order)
+        fs = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in faces)
+        objs.append(f'<object id="{oid}" name="{escape(name)}" type="model"><mesh><vertices>{vs}</vertices><triangles>{fs}</triangles></mesh></object>')
+        items.append(f'<item objectid="{oid}" printable="1"/>')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
+            '<metadata name="Application">creality-3mf</metadata>'
+            f'<resources>{"".join(objs)}</resources><build>{"".join(items)}</build></model>')
+
+def resolved_config(a):
+    """Let Creality Print resolve the presets itself: slice once via the CLI and
+    read the complete config block from the G-code. Those are exactly the keys
+    and serialized values the application writes into its own project files."""
+    import subprocess, tempfile, glob, re
+    with tempfile.TemporaryDirectory() as tmp:
+        cmd = ["creality-print", "--cli",
+               "--load-settings", f"{PROFILES}/machine/{a.printer}.json;{PROFILES}/process/{a.process}.json",
+               "--load-filaments", f"{PROFILES}/filament/{a.filament}.json",
+               "--slice", "0", "--need-gcode-file", "--outputdir", tmp, a.stl[0]]
+        env = dict(os.environ); env.pop("DISPLAY", None); env.pop("WAYLAND_DISPLAY", None)
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        g = glob.glob(f"{tmp}/plate_*.gcode")
+        if r.returncode or not g:
+            sys.exit("preset resolution via CLI failed:\n" + "\n".join(l for l in r.stdout.splitlines() if "error" in l.lower())[-2000:])
+        txt = open(g[0], errors="replace").read()
+        blk = txt[txt.find("; CONFIG_BLOCK_START"):txt.find("; CONFIG_BLOCK_END")]
+        cfg = {}
+        for line in blk.splitlines():
+            m = re.match(r"^; ([a-z0-9_]+) = (.*)$", line)
+            if m: cfg[m.group(1)] = m.group(2)
+    cfg["printer_settings_id"] = a.printer
+    cfg["print_settings_id"] = a.process
+    cfg["filament_settings_id"] = [a.filament]
+    return cfg
+
+def model_settings_xml(meshes):
+    """Creality/Bambu plate description: every object on plate 1, extruder 1."""
+    objs = []; inst = []
+    for oid, (name, _) in enumerate(meshes, start=1):
+        objs.append(f'  <object id="{oid}">\n    <metadata key="name" value="{escape(name)}"/>\n'
+                    f'    <metadata key="extruder" value="1"/>\n  </object>')
+        inst.append(f'    <model_instance>\n      <metadata key="object_id" value="{oid}"/>\n'
+                    f'      <metadata key="instance_id" value="0"/>\n    </model_instance>')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' + "\n".join(objs) + '\n  <plate>\n'
+            '    <metadata key="plater_id" value="1"/>\n    <metadata key="plater_name" value=""/>\n'
+            '    <metadata key="locked" value="false"/>\n' + "\n".join(inst) + '\n  </plate>\n</config>\n')
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("-o", "--output", required=True)
+    ap.add_argument("-p", "--printer", default="Creality K1C 0.4 nozzle")
+    ap.add_argument("-s", "--process", default="0.20mm Standard @Creality K1C 0.4 nozzle")
+    ap.add_argument("-f", "--filament", default="Generic PLA @Creality K1C 0.4 nozzle")
+    ap.add_argument("stl", nargs="+")
+    a = ap.parse_args()
+
+    cfg = resolved_config(a)
+    meshes = [(os.path.splitext(os.path.basename(p))[0], read_stl(p)) for p in a.stl]
+    for n, t in meshes:
+        if not t: sys.exit(f"no triangles read from {n}")
+
+    with zipfile.ZipFile(a.output, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')
+        z.writestr("_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+        z.writestr("3D/3dmodel.model", model_xml(meshes))
+        z.writestr("Metadata/project_settings.config", json.dumps(cfg, indent=4, ensure_ascii=False))
+        z.writestr("Metadata/model_settings.config", model_settings_xml(meshes))
+    print(f"wrote {a.output}: {len(meshes)} object(s), printer={a.printer!r}, process={a.process!r}, filament={a.filament!r}")
+
+if __name__ == "__main__":
+    main()
