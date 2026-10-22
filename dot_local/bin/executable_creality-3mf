@@ -7,7 +7,7 @@ CLI test slice in Metadata/project_settings.config, and a plate description in
 Metadata/model_settings.config (without it the slicer rejects the file with
 "Filament nozzle mapping is incomplete").
 
-usage: creality-3mf -o out.3mf [--gcode] [-p PRINTER] [-s PROCESS] [-f FILAMENT] model.stl|model.3mf ...
+usage: creality-3mf -o out.3mf [--gcode] [-p PRINTER] [-s PROCESS] [-f FILAMENT]\n                    [--set KEY=VALUE ...] model.stl|model.3mf ...
 
 Inputs: binary/ASCII STL, or a plain geometry 3MF (e.g. a SolidCraft export; all
 objects are placed on plate 1 with extruder 1). Preset names are the JSON
@@ -104,10 +104,35 @@ def model_settings_xml(meshes):
             '    <metadata key="plater_id" value="1"/>\n    <metadata key="plater_name" value=""/>\n'
             '    <metadata key="locked" value="false"/>\n' + "\n".join(inst) + '\n  </plate>\n</config>\n')
 
+META = {"type", "name", "inherits", "from", "instantiation", "setting_id", "filament_id",
+        "printer_model", "printer_variant", "is_custom_defined", "version", "description",
+        "renamed_from", "alias", "upward_compatible_machine", "default_materials", "family",
+        "model_id"}  # compatible_printers* stay: the CLI checks them against the machine
+
+def process_json(a, outdir):
+    """The process preset to load: the stock file, or (with --set) a flat copy
+    with the inherits chain resolved and the overrides applied."""
+    stock = f"{PROFILES}/process/{a.process}.json"
+    if not a.set:
+        return stock
+    chain = []; name = a.process
+    while name:
+        j = json.load(open(f"{PROFILES}/process/{name}.json")); chain.append(j); name = j.get("inherits")
+    cfg = {}
+    for j in reversed(chain): cfg.update(j)
+    cfg = {k: v for k, v in cfg.items() if k not in META}
+    for kv in a.set:
+        if "=" not in kv: sys.exit(f"--set expects key=value, got {kv!r}")
+        k, v = kv.split("=", 1)
+        if k not in cfg: sys.exit(f"--set: {k!r} is not a process setting (see the keys in {stock} and its parents)")
+        cfg[k] = [v] if isinstance(cfg[k], list) else v
+    cfg.update({"type": "process", "name": a.process + " (modified)", "from": "User", "instantiation": "true"})
+    p = os.path.join(outdir, "process.json"); json.dump(cfg, open(p, "w"), indent=2); return p
+
 def cli_slice(a, stl, outdir):
     """Slice via the Creality Print CLI; returns the plate G-code path."""
     cmd = ["creality-print", "--cli",
-           "--load-settings", f"{PROFILES}/machine/{a.printer}.json;{PROFILES}/process/{a.process}.json",
+           "--load-settings", f"{PROFILES}/machine/{a.printer}.json;{process_json(a, outdir)}",
            "--load-filaments", f"{PROFILES}/filament/{a.filament}.json",
            "--slice", "0", "--need-gcode-file", "--outputdir", outdir, stl]
     env = dict(os.environ); env.pop("DISPLAY", None); env.pop("WAYLAND_DISPLAY", None)
@@ -141,6 +166,8 @@ def main():
     ap.add_argument("-p", "--printer", default="Creality K1C 0.4 nozzle")
     ap.add_argument("-s", "--process", default="0.20mm Standard @Creality K1C 0.4 nozzle")
     ap.add_argument("-f", "--filament", default="Generic PLA @Creality K1C 0.4 nozzle")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a process setting, e.g. --set enable_support=1 --set sparse_infill_density=30%%")
     ap.add_argument("model", nargs="+", help=".stl or plain geometry .3mf")
     a = ap.parse_args()
     for k, kind in (("printer", "machine"), ("process", "process"), ("filament", "filament")):
@@ -173,6 +200,7 @@ def main():
             z.writestr("Metadata/model_settings.config", model_settings_xml(meshes))
         print(f"wrote {a.output}: {len(meshes)} object(s) [{', '.join(n for n, _ in meshes)}]")
         print(f"  printer={a.printer!r} process={a.process!r} filament={a.filament!r}")
+        if a.set: print("  overrides: " + ", ".join(a.set))
         t, f, h = estimate(gcode)
         print(f"  estimate: {t or '?'}, {f or '?'} g filament, {h or '?'} mm high")
         if a.gcode:
