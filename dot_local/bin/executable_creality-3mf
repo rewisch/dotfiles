@@ -19,6 +19,8 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 PROFILES = "/opt/creality-print/resources/profiles/Creality"
+APP_VERSION = "7.3.0.6157"   # the installed Creality Print; marks the file as its own project
+PROFILE_VERSION = "26.10.10.09"
 NS = {"m": "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"}
 
 def read_stl(path):
@@ -66,6 +68,28 @@ def read_3mf(path):
         out.append((name, mesh_of(o, mat(item.get("transform")))))
     return out
 
+BED = (220.0, 220.0)   # Creality K1C
+GAP = 8.0
+
+def place_on_bed(meshes):
+    """A project file saved by Creality Print keeps its object positions, so the
+    slicer no longer arranges them: put every object on Z=0 and lay them out in
+    a row, centred on the bed (the SolidCraft exports are centred on the origin)."""
+    boxes = []
+    for name, tris in meshes:
+        xs = [v[0] for t in tris for v in t]; ys = [v[1] for t in tris for v in t]; zs = [v[2] for t in tris for v in t]
+        boxes.append((min(xs), max(xs), min(ys), max(ys), min(zs)))
+    total_w = sum(b[1] - b[0] for b in boxes) + GAP * (len(boxes) - 1)
+    x = BED[0] / 2 - total_w / 2
+    out = []
+    for (name, tris), (x0, x1, y0, y1, z0) in zip(meshes, boxes):
+        dx = x - x0; dy = BED[1] / 2 - (y0 + y1) / 2; dz = -z0
+        out.append((name, [tuple((v[0] + dx, v[1] + dy, v[2] + dz) for v in t) for t in tris]))
+        x += (x1 - x0) + GAP
+    if total_w > BED[0] or any(b[3] - b[2] > BED[1] for b in boxes):
+        print(f"warning: objects span {total_w:.0f} mm in X, bed is {BED[0]:.0f} x {BED[1]:.0f} mm", file=sys.stderr)
+    return out
+
 def write_stl(path, meshes):
     with open(path, "wb") as o:
         n = sum(len(t) for _, t in meshes)
@@ -90,7 +114,8 @@ def model_xml(meshes):
         items.append(f'<item objectid="{oid}" printable="1"/>')
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
-            '<metadata name="Application">creality-3mf</metadata>'
+            f'<metadata name="Application">Creality_Print V{APP_VERSION} Release</metadata>'
+            '<metadata name="BambuStudio:3mfVersion">1</metadata>'
             f'<resources>{"".join(objs)}</resources><build>{"".join(items)}</build></model>')
 
 def model_settings_xml(meshes):
@@ -128,6 +153,17 @@ def process_json(a, outdir):
         cfg[k] = [v] if isinstance(cfg[k], list) else v
     cfg.update({"type": "process", "name": a.process + " (modified)", "from": "User", "instantiation": "true"})
     p = os.path.join(outdir, "process.json"); json.dump(cfg, open(p, "w"), indent=2); return p
+
+def creality_config_xml():
+    """The marker Creality Print writes itself; without it the GUI treats the
+    file as foreign and asks for the printer preset."""
+    import datetime
+    items = [("Company", "Creality"), ("Application", "Creality_Print"), ("AppVersion", APP_VERSION),
+             ("AppStage", "Release"), ("FileVersion", "1.0"), ("FileType", "Undefined"),
+             ("ProfileVersion", PROFILE_VERSION),
+             ("CreationDate", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))]
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' +
+            "".join(f'    <metadata key="{k}" value="{escape(v)}"/>\n' for k, v in items) + '</config>\n')
 
 def cli_slice(a, stl, outdir):
     """Slice via the Creality Print CLI; returns the plate G-code path."""
@@ -179,6 +215,7 @@ def main():
         meshes += read_3mf(p) if p.lower().endswith(".3mf") else read_stl(p)
     for n, t in meshes:
         if not t: sys.exit(f"no triangles read for object {n!r}")
+    meshes = place_on_bed(meshes)
 
     with tempfile.TemporaryDirectory() as tmp:
         stl = os.path.join(tmp, "all.stl"); write_stl(stl, meshes)
@@ -198,6 +235,7 @@ def main():
             z.writestr("3D/3dmodel.model", model_xml(meshes))
             z.writestr("Metadata/project_settings.config", json.dumps(cfg, indent=4, ensure_ascii=False))
             z.writestr("Metadata/model_settings.config", model_settings_xml(meshes))
+            z.writestr("Metadata/creality.config", creality_config_xml())
         print(f"wrote {a.output}: {len(meshes)} object(s) [{', '.join(n for n, _ in meshes)}]")
         print(f"  printer={a.printer!r} process={a.process!r} filament={a.filament!r}")
         if a.set: print("  overrides: " + ", ".join(a.set))
