@@ -1,5 +1,10 @@
 #!/bin/sh
-# Launcher for Creality Print (AUR creality-print-bin) that hides variable fonts
-# from the app; see ~/.config/creality-print/fonts-novar.conf for why.
+# Launcher for Creality Print (AUR creality-print-bin).
+# - FONTCONFIG_FILE hides variable fonts: the app mixes its bundled FreeType with the
+#   system one and segfaults in tt_apply_mvar on variable fonts (e.g. Adwaita Sans).
+#   See ~/.config/creality-print/fonts-novar.conf.
+# - GDK_BACKEND=x11: under native Wayland the wxGTK layout breaks with fractional
+#   monitor scaling (panels overlap the toolbar). Via Xwayland it lays out correctly.
 export FONTCONFIG_FILE="$HOME/.config/creality-print/fonts-novar.conf"
+export GDK_BACKEND=x11
 exec /usr/bin/CrealityPrint "$@"
