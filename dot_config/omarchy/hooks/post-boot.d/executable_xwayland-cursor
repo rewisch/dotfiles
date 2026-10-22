@@ -1,0 +1,14 @@
+#!/bin/bash
+# Give Xwayland a visible root-window cursor.
+# Omarchy starts Hyprland with the blank "omarchy-startup" cursor theme, and
+# Hyprland sets the Xwayland root cursor from that at Xwayland start. The later
+# restore (hyprctl setcursor) does not update it, so X11 apps that just inherit
+# the root cursor (GTK's default arrow, wxWidgets apps such as Creality Print)
+# show no pointer at all. Setting the root cursor once per session fixes it.
+# See https://github.com/hyprwm/Hyprland/issues/7335.
+export DISPLAY="${DISPLAY:-:0}"
+for _ in $(seq 1 30); do
+  [[ -S /tmp/.X11-unix/X${DISPLAY#:} ]] && break
+  sleep 1
+done
+exec xsetroot -cursor_name left_ptr
