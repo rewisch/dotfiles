@@ -165,6 +165,30 @@ def creality_config_xml():
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n' +
             "".join(f'    <metadata key="{k}" value="{escape(v)}"/>\n' for k, v in items) + '</config>\n')
 
+def ask_filament(printer):
+    """The loaded spool changes from print to print, so it is never assumed:
+    ask in a terminal, refuse otherwise (an agent must ask the owner first)."""
+    suffix = " @" + printer
+    names = sorted(f[:-len(".json")] for f in os.listdir(f"{PROFILES}/filament")
+                   if f.endswith(suffix + ".json"))
+    if not sys.stdin.isatty():
+        sys.exit("no filament given: pass -f \"<name>\" (ask the owner which spool is loaded).\n"
+                 "Presets for this printer:\n  " + "\n  ".join(names))
+    print(f"Which filament is loaded? (presets for {printer})")
+    for i, n in enumerate(names, start=1):
+        print(f"  {i:2d}) {n[:-len(suffix)]}")
+    while True:
+        try:
+            ans = input("number or name: ").strip()
+        except EOFError:
+            sys.exit("\nno filament chosen")
+        if ans.isdigit() and 1 <= int(ans) <= len(names):
+            return names[int(ans) - 1]
+        for n in names:
+            if ans.lower() in (n.lower(), n[:-len(suffix)].lower()):
+                return n
+        print("not a preset, try again")
+
 def cli_slice(a, stl, outdir):
     """Slice via the Creality Print CLI; returns the plate G-code path."""
     cmd = ["creality-print", "--cli",
@@ -201,11 +225,13 @@ def main():
     ap.add_argument("--gcode", action="store_true", help="also write <output>.gcode and print the estimate")
     ap.add_argument("-p", "--printer", default="Creality K1C 0.4 nozzle")
     ap.add_argument("-s", "--process", default="0.20mm Standard @Creality K1C 0.4 nozzle")
-    ap.add_argument("-f", "--filament", default="Generic PLA @Creality K1C 0.4 nozzle")
+    ap.add_argument("-f", "--filament", help="filament preset; asked interactively when omitted in a terminal")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a process setting, e.g. --set enable_support=1 --set sparse_infill_density=30%%")
     ap.add_argument("model", nargs="+", help=".stl or plain geometry .3mf")
     a = ap.parse_args()
+    if not a.filament:
+        a.filament = ask_filament(a.printer)
     for k, kind in (("printer", "machine"), ("process", "process"), ("filament", "filament")):
         if not os.path.exists(f"{PROFILES}/{kind}/{getattr(a, k)}.json"):
             sys.exit(f"{k} preset not found: {PROFILES}/{kind}/{getattr(a, k)}.json")
