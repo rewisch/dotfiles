@@ -1,0 +1,86 @@
+#!/usr/bin/env -S python3 -I
+"""Silence watcher for npu-dictate.
+
+Follows the growing WAV that pw-record writes (16 kHz mono s16) and ends the
+dictation by itself:
+  - after speech, SILENCE_SEC seconds without voice  -> `npu-dictate stop` (transcribe)
+  - no voice at all within NOSPEECH_SEC seconds       -> `npu-dictate cancel`
+  - MAX_SEC reached                                   -> `npu-dictate stop`
+Exits quietly once the recording ends some other way (SUPER+D).
+
+Usage: npu-dictate-vad <wav> <pidfile> <silence_sec> <nospeech_sec> <max_sec>
+"""
+import array
+import math
+import os
+import subprocess
+import sys
+import time
+
+wav, pidfile = sys.argv[1], sys.argv[2]
+silence_sec, nospeech_sec, max_sec = (float(x) for x in sys.argv[3:6])
+
+RATE = 16000
+CHUNK = RATE // 10 * 2          # 100 ms of s16 mono, in bytes
+SKIP = 44 + RATE // 10 * 3 * 2  # WAV header + 300 ms start-up click
+MIN_VOICE = 45                  # absolute RMS floor for "voice" (quiet room is ~10-30)
+FACTOR = 3.5                    # voice = RMS above FACTOR x noise floor
+
+state_dir = os.path.dirname(pidfile)
+
+
+def recording():
+    try:
+        os.kill(int(open(pidfile).read()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def finish(action):
+    subprocess.Popen(["npu-dictate", action], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sys.exit(0)
+
+
+start = time.monotonic()
+pos = SKIP
+floor = 20.0
+heard = False
+last_voice = None
+buf = b""
+
+while True:
+    time.sleep(0.2)
+    if not recording():
+        sys.exit(0)
+    now = time.monotonic()
+    try:
+        with open(wav, "rb") as f:
+            f.seek(pos)
+            data = f.read()
+    except OSError:
+        data = b""
+    pos += len(data)
+    buf += data
+    while len(buf) >= CHUNK:
+        a = array.array("h")
+        a.frombytes(buf[:CHUNK])
+        buf = buf[CHUNK:]
+        rms = math.sqrt(sum(x * x for x in a) / len(a))
+        if rms > max(MIN_VOICE, floor * FACTOR):
+            if not heard:
+                open(os.path.join(state_dir, "speech"), "w").close()
+            heard = True
+            last_voice = now
+        else:
+            # slow-moving noise floor estimate from non-voice chunks
+            floor = 0.95 * floor + 0.05 * min(rms, floor * 2)
+
+    elapsed = now - start
+    if elapsed >= max_sec:
+        finish("stop")
+    if heard and now - last_voice >= silence_sec:
+        finish("stop")
+    if not heard and elapsed >= nospeech_sec:
+        finish("cancel")

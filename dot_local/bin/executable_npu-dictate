@@ -5,10 +5,17 @@
 # The server starts on demand and stops itself after IDLE_MIN minutes.
 #
 #   npu-dictate start|stop|toggle   record / stop + type / switch
+#   npu-dictate cancel              stop recording without transcribing
 #   npu-dictate file <audio> [out]  transcribe an audio file (mp3, wav, ...) to stdout or [out]
 #   npu-dictate server-start|server-stop|status
 #
+# Recording ends by itself (npu-dictate-vad): SILENCE_SEC of silence after speech
+# transcribes, no speech within NOSPEECH_SEC cancels.
+#
 # Config (optional): ~/.config/npu-dictate/config
+#   SILENCE_SEC=5        # auto-stop after this much silence once you have spoken (0 = off)
+#   NOSPEECH_SEC=15      # cancel if nothing is said at all within this time
+#   MAX_SEC=600          # hard limit per dictation
 #   LANGUAGE=""          # "" = auto-detect, or de, en, ...
 #   IDLE_MIN=10          # stop the NPU server after N idle minutes
 #   MODEL="qwen3.5:4b"   # chat model flm loads next to whisper
@@ -18,6 +25,9 @@
 
 set -uo pipefail
 
+SILENCE_SEC=${SILENCE_SEC:-5}
+NOSPEECH_SEC=${NOSPEECH_SEC:-15}
+MAX_SEC=${MAX_SEC:-600}
 LANGUAGE=""
 IDLE_MIN=10
 MODEL="qwen3.5:4b"
@@ -83,14 +93,38 @@ start() {
   done
   [[ -n ${pid:-} ]] || { notify 3000 "Diktat" "Aufnahme konnte nicht starten"; exit 1; }
   echo "$pid" > "$REC_PID"
-  notify 0 "🎙 Diktat läuft" "SUPER+D zum Beenden"
+  rm -f "$STATE/speech"
+  local hint="SUPER+D zum Beenden"
+  if (( SILENCE_SEC > 0 )); then
+    setsid -f npu-dictate-vad "$REC_WAV" "$REC_PID" "$SILENCE_SEC" "$NOSPEECH_SEC" "$MAX_SEC" >/dev/null 2>&1
+    hint="stoppt nach ${SILENCE_SEC} s Stille · SUPER+D sofort"
+  fi
+  notify 0 "🎙 Diktat läuft" "$hint"
 }
 
-stop() {
-  recording || return 0
+# Only one stop/cancel at a time (SUPER+D and the silence watcher can race).
+# The lock stays held during transcription, so busy() tells toggle not to start anew.
+lock() { exec 8>"$STATE/stop.lock"; flock -n 8; }
+busy() { ! flock -n "$STATE/stop.lock" true; }
+
+end_recording() {
   local pid; pid=$(<"$REC_PID")
   kill -INT "$pid"; for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
   rm -f "$REC_PID"
+}
+
+cancel() {
+  lock || return 0
+  recording || return 0
+  end_recording
+  notify 2000 "Diktat abgebrochen" "nichts gesagt"
+  arm_idle_stop
+}
+
+stop() {
+  lock || return 0
+  recording || return 0
+  end_recording
 
   # under ~0.4 s of audio (16 kHz * 2 bytes) = nothing said; whisper would hallucinate
   if [[ ! -f $REC_WAV ]] || (( $(stat -c %s "$REC_WAV") < 12800 )); then
@@ -130,12 +164,13 @@ file() {
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
-  toggle) if recording; then stop; else start; fi ;;
+  cancel) cancel ;;
+  toggle) if recording; then stop; elif busy; then exit 0; else start; fi ;;
   file) shift; file "$@" ;;
   server-start) server_start; server_wait && arm_idle_stop ;;
   server-stop) systemctl --user stop "$IDLE_UNIT.timer" "$UNIT" 2>/dev/null; true ;;
   status)
     recording && echo "recording" || echo "idle"
     systemctl --user is-active --quiet "$UNIT" && echo "server: running ($URL)" || echo "server: stopped" ;;
-  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
