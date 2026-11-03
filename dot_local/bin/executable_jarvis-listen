@@ -36,6 +36,7 @@ from openwakeword.model import Model
 THRESHOLD = float(os.environ.get("JARVIS_THRESHOLD", "0.5"))
 COOLDOWN = float(os.environ.get("JARVIS_COOLDOWN", "3"))
 GAIN = float(os.environ.get("JARVIS_GAIN", "8"))
+NEAR = 0.15  # scores from here up to THRESHOLD are logged as near misses
 DEBUG = os.environ.get("JARVIS_DEBUG") == "1"
 FRAME = 1280  # 80 ms at 16 kHz, what openWakeWord expects
 REC_PID = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "npu-dictate", "rec.pid")
@@ -55,7 +56,7 @@ def main():
                             "-P", "{ media.name = \"Jarvis wake word\" node.name = \"jarvis-wake\" }", "-"], stdout=subprocess.PIPE)
     signal.signal(signal.SIGTERM, lambda *_: (rec.terminate(), sys.exit(0)))
     print(f"listening for 'hey jarvis' (threshold {THRESHOLD})", flush=True)
-    last = 0.0
+    last = last_near = 0.0
     peak, lvl, frames = 0.0, 0, 0
     nbytes = FRAME * 2
     while True:
@@ -77,6 +78,9 @@ def main():
                 print(f"max score {peak:.3f}  max rms {lvl}", flush=True)
                 peak, lvl, frames = 0.0, 0, 0
         now = time.monotonic()
+        if NEAR <= score < THRESHOLD and now - last_near > 1.5:
+            last_near = now                      # near miss: shows up in `jarvis log`
+            print(f"near miss (score {score:.2f}, threshold {THRESHOLD})", flush=True)
         if score >= THRESHOLD and now - last > COOLDOWN:
             last = now
             print(f"wake word (score {score:.2f}) -> npu-dictate start", flush=True)
