@@ -83,7 +83,7 @@ start() {
   done
   [[ -n ${pid:-} ]] || { notify 3000 "Diktat" "Aufnahme konnte nicht starten"; exit 1; }
   echo "$pid" > "$REC_PID"
-  notify 0 "🎙 Diktat läuft" "ALT+SPACE zum Beenden"
+  notify 0 "🎙 Diktat läuft" "SUPER+D zum Beenden"
 }
 
 stop() {
