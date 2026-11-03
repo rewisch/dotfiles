@@ -140,7 +140,7 @@ stop() {
 
   if [[ -z $text ]]; then notify 2000 "Diktat" "Kein Text erkannt"; return 0; fi
   echo "$text" > "$STATE/last.txt"
-  (( CLIPBOARD )) && printf '%s' "$text" | wl-copy
+  (( CLIPBOARD )) && printf '%s' "$text" | wl-copy 8>&-   # wl-copy stays in the background: must not inherit the lock
   if (( TYPE_TEXT )); then
     wtype -- "$text"
     notify 1500 "✓ Eingefügt" "$text"
