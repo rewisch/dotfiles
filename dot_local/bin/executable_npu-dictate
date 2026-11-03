@@ -1,0 +1,141 @@
+#!/bin/bash
+# npu-dictate: dictation on the AMD NPU (FastFlowLM whisper-v3:turbo).
+# Records the mic with pw-record, transcribes via a local flm server and types
+# the text into the focused window with wtype.
+# The server starts on demand and stops itself after IDLE_MIN minutes.
+#
+#   npu-dictate start|stop|toggle   record / stop + type / switch
+#   npu-dictate file <audio> [out]  transcribe an audio file (mp3, wav, ...) to stdout or [out]
+#   npu-dictate server-start|server-stop|status
+#
+# Config (optional): ~/.config/npu-dictate/config
+#   LANGUAGE=""          # "" = auto-detect, or de, en, ...
+#   IDLE_MIN=10          # stop the NPU server after N idle minutes
+#   MODEL="qwen3.5:4b"   # chat model flm loads next to whisper
+#   PORT=52626
+#   TYPE_TEXT=1          # 1 = type into window, 0 = clipboard only
+#   CLIPBOARD=1          # also copy the text to the clipboard
+
+set -uo pipefail
+
+LANGUAGE=""
+IDLE_MIN=10
+MODEL="qwen3.5:4b"
+PORT=52626
+TYPE_TEXT=1
+CLIPBOARD=1
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/npu-dictate/config"
+[[ -f $CONFIG ]] && source "$CONFIG"
+
+STATE="${XDG_RUNTIME_DIR:-/run/user/$UID}/npu-dictate"
+mkdir -p "$STATE"
+REC_PID="$STATE/rec.pid"
+REC_WAV="$STATE/rec.wav"
+NOTE_ID="$STATE/note.id"
+URL="http://127.0.0.1:$PORT"
+UNIT="npu-dictate-server"
+IDLE_UNIT="npu-dictate-idle"
+
+notify() { # notify <timeout-ms> <summary> [body]
+  local id args=(-a "Diktat" -p -t "$1" -h string:x-canonical-private-synchronous:npu-dictate)
+  [[ -s $NOTE_ID ]] && args+=(-r "$(<"$NOTE_ID")")
+  id=$(notify-send "${args[@]}" "$2" "${3:-}" 2>/dev/null) && echo "$id" > "$NOTE_ID"
+}
+
+server_up() { curl -sf -m 1 "$URL/v1/models" >/dev/null 2>&1; }
+
+server_start() {
+  if ! systemctl --user is-active --quiet "$UNIT"; then
+    systemctl --user reset-failed "$UNIT" 2>/dev/null
+    systemd-run --user --quiet --collect --unit="$UNIT" \
+      -p LimitMEMLOCK=32G --working-directory="$HOME" \
+      flm serve "$MODEL" --asr 1 --port "$PORT" --quiet
+  fi
+}
+
+server_wait() { # wait up to 60 s
+  for _ in $(seq 1 240); do server_up && return 0; sleep 0.25; done
+  return 1
+}
+
+arm_idle_stop() {
+  systemctl --user stop "$IDLE_UNIT.timer" 2>/dev/null
+  systemd-run --user --quiet --collect --unit="$IDLE_UNIT" --on-active="${IDLE_MIN}min" \
+    systemctl --user stop "$UNIT"
+}
+
+recording() { [[ -s $REC_PID ]] && kill -0 "$(<"$REC_PID")" 2>/dev/null; }
+
+transcribe() { # transcribe <file> -> text on stdout
+  local args=(-sf -m 600 "$URL/v1/audio/transcriptions" -F "file=@$1" -F model=whisper-v3:turbo)
+  [[ -n $LANGUAGE ]] && args+=(-F "language=$LANGUAGE")
+  curl "${args[@]}" | python3 -Ic 'import json,sys; print(json.load(sys.stdin).get("text","").strip())'
+}
+
+start() {
+  recording && return 0
+  server_start                       # loads in parallel while you speak
+  systemctl --user stop "$IDLE_UNIT.timer" 2>/dev/null
+  rm -f "$REC_WAV"
+  setsid -f pw-record --rate 16000 --channels 1 --format s16 "$REC_WAV" >/dev/null 2>&1
+  for _ in $(seq 1 20); do
+    pid=$(pgrep -nf "pw-record .*$REC_WAV") && break; sleep 0.05
+  done
+  [[ -n ${pid:-} ]] || { notify 3000 "Diktat" "Aufnahme konnte nicht starten"; exit 1; }
+  echo "$pid" > "$REC_PID"
+  notify 0 "🎙 Diktat läuft" "ALT+SPACE zum Beenden"
+}
+
+stop() {
+  recording || return 0
+  local pid; pid=$(<"$REC_PID")
+  kill -INT "$pid"; for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
+  rm -f "$REC_PID"
+
+  # under ~0.4 s of audio (16 kHz * 2 bytes) = nothing said; whisper would hallucinate
+  if [[ ! -f $REC_WAV ]] || (( $(stat -c %s "$REC_WAV") < 12800 )); then
+    notify 1500 "Diktat" "Nichts aufgenommen"; arm_idle_stop; return 0
+  fi
+
+  notify 0 "⏳ Transkribiere…" "auf der NPU"
+  if ! server_wait; then
+    notify 5000 "Diktat fehlgeschlagen" "NPU-Server startet nicht (journalctl --user -u $UNIT)"; return 1
+  fi
+  local text; text=$(transcribe "$REC_WAV")
+  arm_idle_stop
+
+  if [[ -z $text ]]; then notify 2000 "Diktat" "Kein Text erkannt"; return 0; fi
+  echo "$text" > "$STATE/last.txt"
+  (( CLIPBOARD )) && printf '%s' "$text" | wl-copy
+  if (( TYPE_TEXT )); then
+    wtype -- "$text"
+    notify 1500 "✓ Eingefügt" "$text"
+  else
+    notify 3000 "✓ In der Zwischenablage" "$text"
+  fi
+}
+
+file() {
+  [[ -f ${1:-} ]] || { echo "Usage: npu-dictate file <audio> [out.txt]" >&2; exit 1; }
+  server_start
+  server_up || echo "Starte NPU-Server…" >&2
+  server_wait || { echo "NPU-Server startet nicht (journalctl --user -u $UNIT)" >&2; exit 1; }
+  systemctl --user stop "$IDLE_UNIT.timer" 2>/dev/null
+  local text; text=$(transcribe "$1"); local rc=$?
+  arm_idle_stop
+  (( rc == 0 )) || { echo "Transkription fehlgeschlagen" >&2; exit 1; }
+  if [[ -n ${2:-} ]]; then printf '%s\n' "$text" > "$2"; echo "→ $2" >&2; else printf '%s\n' "$text"; fi
+}
+
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  toggle) if recording; then stop; else start; fi ;;
+  file) shift; file "$@" ;;
+  server-start) server_start; server_wait && arm_idle_stop ;;
+  server-stop) systemctl --user stop "$IDLE_UNIT.timer" "$UNIT" 2>/dev/null; true ;;
+  status)
+    recording && echo "recording" || echo "idle"
+    systemctl --user is-active --quiet "$UNIT" && echo "server: running ($URL)" || echo "server: stopped" ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

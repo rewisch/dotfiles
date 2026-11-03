@@ -1,0 +1,8 @@
+#!/bin/bash
+# Omarchy dictation adapter for npu-dictate (whisper on the AMD NPU).
+# Selected via ~/.config/omarchy/defaults/dictation = npu-dictate.
+
+case "${1:-}" in
+  start|stop|toggle) exec npu-dictate "$1" ;;
+  *) echo "Usage: omarchy dictation npu-dictate <start|stop|toggle>" >&2; exit 1 ;;
+esac
