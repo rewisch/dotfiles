@@ -11,6 +11,7 @@ Exits quietly once the recording ends some other way (SUPER+D).
 Usage: npu-dictate-vad <wav> <pidfile> <silence_sec> <nospeech_sec> <max_sec>
 """
 import array
+import collections
 import math
 import os
 import subprocess
@@ -23,8 +24,14 @@ silence_sec, nospeech_sec, max_sec = (float(x) for x in sys.argv[3:6])
 RATE = 16000
 CHUNK = RATE // 10 * 2          # 100 ms of s16 mono, in bytes
 SKIP = 44 + RATE // 10 * 3 * 2  # WAV header + 300 ms start-up click
-MIN_VOICE = 45                  # absolute RMS floor for "voice" (quiet room is ~10-30)
-FACTOR = 3.5                    # voice = RMS above FACTOR x noise floor
+# Measured on this mic: quiet room RMS ~10-30, soft speech ~40-90, normal speech 100-300.
+# voice = RMS above clamp(FACTOR x noise floor, MIN_VOICE, MAX_VOICE); noise floor = quietest
+# 100 ms of the last FLOOR_WIN chunks. The upper clamp keeps long continuous speech from
+# ever lifting the threshold above soft speech.
+MIN_VOICE = 35
+MAX_VOICE = 60
+FACTOR = 2.5
+FLOOR_WIN = 100                 # 10 s
 
 state_dir = os.path.dirname(pidfile)
 
@@ -45,7 +52,7 @@ def finish(action):
 
 start = time.monotonic()
 pos = SKIP
-floor = 20.0
+recent = collections.deque([20.0], maxlen=FLOOR_WIN)
 heard = False
 last_voice = None
 buf = b""
@@ -68,14 +75,13 @@ while True:
         a.frombytes(buf[:CHUNK])
         buf = buf[CHUNK:]
         rms = math.sqrt(sum(x * x for x in a) / len(a))
-        if rms > max(MIN_VOICE, floor * FACTOR):
+        recent.append(rms)
+        threshold = min(MAX_VOICE, max(MIN_VOICE, min(recent) * FACTOR))
+        if rms > threshold:
             if not heard:
                 open(os.path.join(state_dir, "speech"), "w").close()
             heard = True
             last_voice = now
-        else:
-            # slow-moving noise floor estimate from non-voice chunks
-            floor = 0.95 * floor + 0.05 * min(rms, floor * 2)
 
     elapsed = now - start
     if elapsed >= max_sec:
