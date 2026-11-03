@@ -1,7 +1,7 @@
 #!/usr/bin/env -S ${HOME}/.local/share/wakeword/.venv/bin/python
 """Wake word listener: "Hey Jarvis" starts npu-dictate.
 
-Streams the microphone (pw-record, 16 kHz mono s16) through openWakeWord
+Streams the microphone (pw-record --raw: without it stdout is big-endian Sun .au, 16 kHz mono s16) through openWakeWord
 (hey_jarvis, ONNX on the CPU). On a hit it runs `npu-dictate start`; the
 dictation then ends by itself after silence. Detection pauses while a
 dictation is recording.
@@ -14,7 +14,9 @@ Setup of the venv (not in chezmoi, rebuildable):
   uv pip install --python ~/.local/share/wakeword/.venv/bin/python onnxruntime numpy scipy scikit-learn tqdm requests
   ~/.local/share/wakeword/.venv/bin/python -c 'from openwakeword.utils import download_models; download_models(["hey_jarvis"])'
 
-Env: JARVIS_THRESHOLD (default 0.5), JARVIS_COOLDOWN seconds (default 3), JARVIS_DEBUG=1 prints scores.
+Env: JARVIS_THRESHOLD (default 0.5), JARVIS_COOLDOWN seconds (default 3),
+     JARVIS_GAIN (default 8: the mic source sits at 27 % volume, speech arrives at
+     RMS ~50-300, openWakeWord expects normal levels), JARVIS_DEBUG=1 logs scores.
 """
 import os
 
@@ -33,6 +35,7 @@ from openwakeword.model import Model
 
 THRESHOLD = float(os.environ.get("JARVIS_THRESHOLD", "0.5"))
 COOLDOWN = float(os.environ.get("JARVIS_COOLDOWN", "3"))
+GAIN = float(os.environ.get("JARVIS_GAIN", "8"))
 DEBUG = os.environ.get("JARVIS_DEBUG") == "1"
 FRAME = 1280  # 80 ms at 16 kHz, what openWakeWord expects
 REC_PID = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "npu-dictate", "rec.pid")
@@ -48,11 +51,12 @@ def dictating():
 
 def main():
     model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-    rec = subprocess.Popen(["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16",
+    rec = subprocess.Popen(["pw-record", "--raw", "--rate", "16000", "--channels", "1", "--format", "s16",
                             "-P", "{ media.name = \"Jarvis wake word\" node.name = \"jarvis-wake\" }", "-"], stdout=subprocess.PIPE)
     signal.signal(signal.SIGTERM, lambda *_: (rec.terminate(), sys.exit(0)))
     print(f"listening for 'hey jarvis' (threshold {THRESHOLD})", flush=True)
     last = 0.0
+    peak, lvl, frames = 0.0, 0, 0
     nbytes = FRAME * 2
     while True:
         data = rec.stdout.read(nbytes)
@@ -61,9 +65,17 @@ def main():
             sys.exit(1)
         if dictating():
             continue
-        score = model.predict(np.frombuffer(data, dtype=np.int16))["hey_jarvis"]
-        if DEBUG and score > 0.05:
-            print(f"score {score:.2f}", flush=True)
+        audio = np.frombuffer(data, dtype=np.int16)
+        if GAIN != 1:
+            audio = np.clip(audio.astype(np.float32) * GAIN, -32768, 32767).astype(np.int16)
+        score = model.predict(audio)["hey_jarvis"]
+        if DEBUG:
+            peak = max(peak, score)
+            lvl = max(lvl, int(np.sqrt(np.mean(audio.astype(np.float32) ** 2))))
+            frames += 1
+            if frames == 25:                     # every 2 s
+                print(f"max score {peak:.3f}  max rms {lvl}", flush=True)
+                peak, lvl, frames = 0.0, 0, 0
         now = time.monotonic()
         if score >= THRESHOLD and now - last > COOLDOWN:
             last = now
