@@ -1,0 +1,12 @@
+#!/bin/bash
+# jarvis on|off|toggle|status|log - control the "Hey Jarvis" wake word listener.
+# on/off also enable/disable it for the next login.
+unit=jarvis-wake.service
+case "${1:-status}" in
+  on) systemctl --user enable --now "$unit" && notify-send -a Diktat -t 2000 "👂 Hey Jarvis an" ;;
+  off) systemctl --user disable --now "$unit" && notify-send -a Diktat -t 2000 "Hey Jarvis aus" ;;
+  toggle) if systemctl --user is-active --quiet "$unit"; then "$0" off; else "$0" on; fi ;;
+  status) systemctl --user is-active "$unit" ;;
+  log) journalctl --user -u "$unit" -f ;;
+  *) echo "Usage: jarvis on|off|toggle|status|log" >&2; exit 1 ;;
+esac

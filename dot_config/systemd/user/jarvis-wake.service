@@ -1,0 +1,13 @@
+[Unit]
+Description=Wake word "Hey Jarvis" -> npu-dictate
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/jarvis-listen
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target

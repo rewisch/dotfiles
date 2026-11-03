@@ -1,0 +1,77 @@
+#!/usr/bin/env -S ${HOME}/.local/share/wakeword/.venv/bin/python
+"""Wake word listener: "Hey Jarvis" starts npu-dictate.
+
+Streams the microphone (pw-record, 16 kHz mono s16) through openWakeWord
+(hey_jarvis, ONNX on the CPU). On a hit it runs `npu-dictate start`; the
+dictation then ends by itself after silence. Detection pauses while a
+dictation is recording.
+
+Runs as the user service jarvis-wake.service (toggle: `jarvis toggle`).
+
+Setup of the venv (not in chezmoi, rebuildable):
+  uv venv --python 3.12 ~/.local/share/wakeword/.venv
+  uv pip install --python ~/.local/share/wakeword/.venv/bin/python --no-deps openwakeword==0.6.0
+  uv pip install --python ~/.local/share/wakeword/.venv/bin/python onnxruntime numpy scipy scikit-learn tqdm requests
+  ~/.local/share/wakeword/.venv/bin/python -c 'from openwakeword.utils import download_models; download_models(["hey_jarvis"])'
+
+Env: JARVIS_THRESHOLD (default 0.5), JARVIS_COOLDOWN seconds (default 3), JARVIS_DEBUG=1 prints scores.
+"""
+import os
+
+# One thread for the math libraries: with their default thread pools (one per core)
+# the workers spin between the 80 ms inferences and burn ~2/3 of a core.
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
+import signal
+import subprocess
+import sys
+import time
+
+import numpy as np
+from openwakeword.model import Model
+
+THRESHOLD = float(os.environ.get("JARVIS_THRESHOLD", "0.5"))
+COOLDOWN = float(os.environ.get("JARVIS_COOLDOWN", "3"))
+DEBUG = os.environ.get("JARVIS_DEBUG") == "1"
+FRAME = 1280  # 80 ms at 16 kHz, what openWakeWord expects
+REC_PID = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "npu-dictate", "rec.pid")
+
+
+def dictating():
+    try:
+        os.kill(int(open(REC_PID).read()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def main():
+    model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+    rec = subprocess.Popen(["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16",
+                            "-P", "{ media.name = \"Jarvis wake word\" node.name = \"jarvis-wake\" }", "-"], stdout=subprocess.PIPE)
+    signal.signal(signal.SIGTERM, lambda *_: (rec.terminate(), sys.exit(0)))
+    print(f"listening for 'hey jarvis' (threshold {THRESHOLD})", flush=True)
+    last = 0.0
+    nbytes = FRAME * 2
+    while True:
+        data = rec.stdout.read(nbytes)
+        if len(data) < nbytes:
+            print("microphone stream ended", file=sys.stderr, flush=True)
+            sys.exit(1)
+        if dictating():
+            continue
+        score = model.predict(np.frombuffer(data, dtype=np.int16))["hey_jarvis"]
+        if DEBUG and score > 0.05:
+            print(f"score {score:.2f}", flush=True)
+        now = time.monotonic()
+        if score >= THRESHOLD and now - last > COOLDOWN:
+            last = now
+            print(f"wake word (score {score:.2f}) -> npu-dictate start", flush=True)
+            subprocess.Popen(["npu-dictate", "start"], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            model.reset()
+
+
+if __name__ == "__main__":
+    main()
