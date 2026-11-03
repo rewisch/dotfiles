@@ -81,7 +81,13 @@ recording() { [[ -s $REC_PID ]] && kill -0 "$(<"$REC_PID")" 2>/dev/null; }
 transcribe() { # transcribe <file> -> text on stdout
   local args=(-sf -m 600 "$URL/v1/audio/transcriptions" -F "file=@$1" -F model=whisper-v3:turbo)
   [[ -n $LANGUAGE ]] && args+=(-F "language=$LANGUAGE")
-  curl "${args[@]}" | python3 -Ic 'import json,sys; print(json.load(sys.stdin).get("text","").strip())'
+  curl "${args[@]}" | python3 -Ic '
+import json, re, sys
+t = json.load(sys.stdin).get("text", "").strip()
+# drop leading wake words ("Hey Jarvis", which Whisper also writes Chavis, Javis, Dschawis, ...)
+wake = r"^(?:(?:hey|hei|he|hi|ey)[\s,.!-]*(?:j|ch|tsch|dsch|sch|g|dj)a+r?[vw]i[sz]+[\s,.!?-]*)+"
+r = re.sub(wake, "", t, flags=re.I).strip()
+print(r[:1].upper() + r[1:] if r != t else r)'
 }
 
 start() {
