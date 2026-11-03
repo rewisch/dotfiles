@@ -17,6 +17,7 @@
 #   NOSPEECH_SEC=15      # cancel if nothing is said at all within this time
 #   MAX_SEC=600          # hard limit per dictation
 #   LANGUAGE=""          # "" = auto-detect, or de, en, ...
+#   POLISH=auto          # punctuation clean-up with the local LLM: auto | always | off
 #   IDLE_MIN=10          # stop the NPU server after N idle minutes
 #   MODEL="qwen3.5:4b"   # chat model flm loads next to whisper
 #   PORT=52626
@@ -29,6 +30,7 @@ SILENCE_SEC=${SILENCE_SEC:-5}
 NOSPEECH_SEC=${NOSPEECH_SEC:-15}
 MAX_SEC=${MAX_SEC:-600}
 LANGUAGE=""
+POLISH=auto
 IDLE_MIN=10
 MODEL="qwen3.5:4b"
 PORT=52626
@@ -136,6 +138,9 @@ stop() {
     notify 5000 "Diktat fehlgeschlagen" "NPU-Server startet nicht (journalctl --user -u $UNIT)"; return 1
   fi
   local text; text=$(transcribe "$REC_WAV")
+  if [[ -n $text && $POLISH != off ]]; then
+    text=$(printf '%s' "$text" | npu-dictate-polish "$URL" "$MODEL" "$POLISH")
+  fi
   arm_idle_stop
 
   if [[ -z $text ]]; then notify 2000 "Diktat" "Kein Text erkannt"; return 0; fi

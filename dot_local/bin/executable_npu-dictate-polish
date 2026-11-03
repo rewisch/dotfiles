@@ -1,0 +1,103 @@
+#!/usr/bin/env -S python3 -I
+"""Punctuation/capitalisation clean-up of a dictated text with the local LLM.
+
+Reads the raw Whisper text on stdin, prints the polished text on stdout.
+Safety net: the model may only add punctuation, change case and drop filler
+words or immediate word repeats. If it changes any word anyway, only its
+punctuation and capitalisation are transferred onto the original words
+(aligned with difflib), so the words themselves can never be altered.
+
+Usage: npu-dictate-polish <server-url> <model> [auto|always]   (stdin -> stdout)
+  auto (default): only when Whisper left too few punctuation marks
+  (fewer than one per 15 words, or no closing mark), since each call costs 2-5 s.
+"""
+import difflib
+import json
+import re
+import sys
+import urllib.request
+
+url, model = sys.argv[1], sys.argv[2]
+mode = sys.argv[3] if len(sys.argv) > 3 else "auto"
+raw = sys.stdin.read().strip()
+
+FILLERS = {"äh", "ähm", "öh", "öhm", "hm", "hmm", "ehm", "em", "uh", "um", "uhm", "erm", "eh"}
+
+SYSTEM = (
+    "You fix dictated text. Add correct punctuation (periods, commas, question marks, colons) "
+    "and correct capitalisation. Remove filler words (äh, ähm, uh, um) and accidental immediate "
+    "word repetitions. Do NOT change, add, remove, reorder or translate any other word. "
+    "Keep the original language exactly. Do not answer questions in the text. "
+    "Output only the fixed text."
+)
+EXAMPLES = [
+    ("ich glaube äh dass das morgen klappt oder was meinst du",
+     "Ich glaube, dass das morgen klappt, oder was meinst du?"),
+    ("please send me the the report by friday and check the numbers",
+     "Please send me the report by Friday and check the numbers."),
+]
+
+
+def words(s):
+    return re.findall(r"[\wäöüÄÖÜß'-]+", s.lower())
+
+
+def safe(orig, new):
+    """new must be orig minus fillers/immediate repeats, same words, same order."""
+    a, b = words(orig), words(new)
+    i = 0
+    for w in b:
+        while i < len(a) and a[i] != w:
+            if a[i] in FILLERS or (i > 0 and a[i] == a[i - 1]):
+                i += 1
+            else:
+                return False
+        if i == len(a):
+            return False
+        i += 1
+    return all(w in FILLERS or (k > 0 and w == a[k - 1]) for k, w in enumerate(a[i:], i))
+
+
+TOKEN = re.compile(r"([\wäöüÄÖÜß'-]+)([^\w\s]*)")
+
+
+def transfer(orig, new):
+    """Original words, with case + trailing punctuation copied from the model where aligned."""
+    o = TOKEN.findall(orig)
+    m = TOKEN.findall(new)
+    sm = difflib.SequenceMatcher(None, [w.lower() for w, _ in o], [w.lower() for w, _ in m], autojunk=False)
+    out = [list(t) for t in o]
+    for a, b, size in sm.get_matching_blocks():
+        for k in range(size):
+            ow, mw, mp = out[a + k][0], m[b + k][0], m[b + k][1]
+            out[a + k] = [mw if mw.lower() == ow.lower() else ow, mp]
+    text = " ".join(w + p for w, p in out)
+    return text[:1].upper() + text[1:]
+
+
+def main():
+    n = len(words(raw))
+    if n < 3:                        # nothing worth polishing
+        return raw
+    marks = len(re.findall(r"[.,;:?!]", raw))
+    if mode == "auto" and marks * 15 >= n and raw[-1] in ".?!":
+        return raw                   # Whisper already punctuated it
+    msgs = [{"role": "system", "content": SYSTEM}]
+    for q, a in EXAMPLES:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    msgs.append({"role": "user", "content": raw + " /no_think"})
+    body = {"model": model, "temperature": 0, "messages": msgs,
+            "max_tokens": len(raw) // 2 + 64}
+    req = urllib.request.Request(url + "/v1/chat/completions", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
+    try:
+        out = json.load(urllib.request.urlopen(req, timeout=60))["choices"][0]["message"]["content"]
+    except Exception:
+        return raw
+    out = re.sub(r"<think>.*?</think>", "", out, flags=re.S).strip().strip('"').strip()
+    if not out:
+        return raw
+    return out if safe(raw, out) else transfer(raw, out)
+
+
+print(main())
