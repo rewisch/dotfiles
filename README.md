@@ -47,6 +47,7 @@ cd ~/.local/share/chezmoi && git add -A && git commit -m "..." && git push
 | `~/.secrets/anthropic-audible.key` | Claude-API-Key für `~/src/audible` (`ANTHROPIC_API_KEY_AUDIBLE`) |
 | `~/.secrets/kex-vnc` | VNC-Passwort für Kali NetHunter KeX auf dem Galaxy S10 (Viewer-Datei: `vncpasswd -f < ~/.secrets/kex-vnc > ~/.secrets/kex-vnc.passwd`) |
 | `~/.secrets/opnsense-api.key` | OPNsense-API-Key (`key=`/`secret=`) für User `claude-agent` (Gruppe admins) auf der Firewall `192.168.99.1`; deaktivieren unter System → Access → Users → ApiKeys |
+| `~/.secrets/homeca/ca.key` | Private key of the **Homeworld Root CA** (own CA for `*.home.arpa` / 192.168.0.0/16, name-constrained, valid until 2046). Issue/renew server certs with `homeca issue …` (`~/.local/bin/homeca`); public cert in `~/.local/share/homeca/`, installed into browser + system trust by `run_onchange_after_install-homeca-root.sh`. Issued certs (fw, homeassistant/unifi, nas, frigate) expire 2029-02-13 and live in `~/.secrets/homeca/issued/` (not in chezmoi, re-issue if lost) |
 | `~/.audible/*` | audible-cli Profile `reto` und `livia` |
 | `~/.ssh/*` | alter SSH-Key, auf Omarchy ausgeschlossen (siehe unten) |
 | `tmp-gpg-export/` | GPG-Keys + Ownertrust, nur für das Import-Skript |

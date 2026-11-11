@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Install the "Homeworld Root CA" (private CA for *.home.arpa / 192.168.0.0/16)
+# into the browser and system trust stores. Re-runs when the cert changes.
+# homeworld-root-ca.crt hash: {{ include "dot_local/share/homeca/homeworld-root-ca.crt" | sha256sum }}
+set -euo pipefail
+
+CRT="$HOME/.local/share/homeca/homeworld-root-ca.crt"
+NICK="Homeworld Root CA"
+[[ -r $CRT ]] || { echo "homeca: $CRT missing, skipping"; exit 0; }
+
+# 1) Chrome/Chromium/Electron (NSS user DB)
+if command -v certutil >/dev/null; then
+  NSS="$HOME/.pki/nssdb"
+  if [[ ! -e $NSS/cert9.db ]]; then mkdir -p "$NSS"; certutil -d "sql:$NSS" -N --empty-password; fi
+  certutil -d "sql:$NSS" -D -n "$NICK" 2>/dev/null || true
+  certutil -d "sql:$NSS" -A -t "C,," -n "$NICK" -i "$CRT"
+  echo "homeca: installed in Chrome/Chromium NSS store"
+
+  # 2) Firefox profiles (only existing ones)
+  for p in "$HOME"/.mozilla/firefox/*/ "$HOME"/.config/mozilla/firefox/*/; do
+    [[ -e ${p}cert9.db ]] || continue
+    certutil -d "sql:$p" -D -n "$NICK" 2>/dev/null || true
+    certutil -d "sql:$p" -A -t "C,," -n "$NICK" -i "$CRT"
+    echo "homeca: installed in Firefox profile $(basename "$p")"
+  done
+else
+  echo "homeca: certutil not found (install nss / libnss3-tools) - browser stores skipped"
+fi
+
+# 3) System trust store (curl, python, git, ...) - needs sudo
+if command -v trust >/dev/null && [[ -d /etc/ca-certificates/trust-source/anchors ]]; then   # Arch
+  if ! cmp -s "$CRT" /etc/ca-certificates/trust-source/anchors/homeworld-root-ca.crt 2>/dev/null; then
+    echo "homeca: adding to system trust store (sudo)"
+    sudo install -m 644 "$CRT" /etc/ca-certificates/trust-source/anchors/homeworld-root-ca.crt
+    sudo trust extract-compat
+  fi
+elif command -v update-ca-certificates >/dev/null; then                                    # Debian/Ubuntu
+  if ! cmp -s "$CRT" /usr/local/share/ca-certificates/homeworld-root-ca.crt 2>/dev/null; then
+    echo "homeca: adding to system trust store (sudo)"
+    sudo install -m 644 "$CRT" /usr/local/share/ca-certificates/homeworld-root-ca.crt
+    sudo update-ca-certificates
+  fi
+elif command -v update-ca-trust >/dev/null; then                                           # Fedora
+  if ! cmp -s "$CRT" /etc/pki/ca-trust/source/anchors/homeworld-root-ca.crt 2>/dev/null; then
+    sudo install -m 644 "$CRT" /etc/pki/ca-trust/source/anchors/homeworld-root-ca.crt
+    sudo update-ca-trust
+  fi
+fi
