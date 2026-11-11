@@ -3,7 +3,9 @@
 #
 #   homeca init                         create the root CA (once)
 #   homeca issue <name> <san> [san...]  issue/renew a server cert (825 days)
-#   homeca list                         show issued certs and expiry
+#   homeca list                         show issued certs, expiry and days left
+#
+# Full guide (what is deployed where, how to renew): ~/.local/share/homeca/RENEWAL.md
 #
 # CA key + issued certs live in ~/.secrets/homeca (dir 700). The CA key is kept
 # encrypted in chezmoi; the public CA cert is installed on clients by chezmoi
@@ -65,17 +67,23 @@ cmd_issue() {
 }
 
 cmd_list() {
-  local c
-  for c in "$DIR"/issued/*/cert.pem; do
-    [[ -e $c ]] || { echo "no certs issued yet"; return; }
-    printf '%-16s %s\n' "$(basename "$(dirname "$c")")" \
-      "$(openssl x509 -in "$c" -noout -enddate | cut -d= -f2)"
+  local c end days warn=0
+  for c in "$CA_CRT" "$DIR"/issued/*/cert.pem; do
+    [[ -e $c ]] || continue
+    end=$(openssl x509 -in "$c" -noout -enddate | cut -d= -f2)
+    days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+    printf '%-16s %-26s %5d days%s\n' \
+      "$([[ $c == "$CA_CRT" ]] && echo "ROOT CA" || basename "$(dirname "$c")")" \
+      "$end" "$days" "$( (( days < 45 )) && echo '  <-- RENEW' )"
+    (( days < 45 )) && warn=1
   done
+  (( warn )) && echo "Renewal steps: ~/.local/share/homeca/RENEWAL.md"
+  return 0
 }
 
 case "${1:-}" in
   init)  cmd_init ;;
   issue) shift; cmd_issue "$@" ;;
   list)  cmd_list ;;
-  *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

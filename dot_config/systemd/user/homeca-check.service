@@ -1,0 +1,6 @@
+[Unit]
+Description=Warn when Homeworld CA certificates are about to expire
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'out=$("%h/.local/bin/homeca" list 2>/dev/null | grep RENEW) && notify-send -u critical -a homeca "Certificates expire soon" "$out\n\nSteps: ~/.local/share/homeca/RENEWAL.md" || true'
